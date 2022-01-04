@@ -56,7 +56,7 @@ let close_zero_float = fun tab ->
 	!m ;;
 
 
-let one_step_evol_diff = fun pop fobj cr f ->
+let one_step_evol_diff = fun varmax pop fobj cr f ->
     let nb_individu = Array.length pop in
     let taille_individu = Array.length pop.(0) in
     let chosen = Array.make 3 0 in
@@ -90,7 +90,9 @@ let one_step_evol_diff = fun pop fobj cr f ->
 	   let c = chosen.(2) in
       for i=0 to (taille_individu-1) do
 			if (Random.int 100)<cr then
-				trial.(i) <- pop.(a).(i) + f*(pop.(b).(i)-pop.(c).(i))
+				let change = ref (pop.(a).(i) + f*(pop.(b).(i)-pop.(c).(i))) in
+				if abs(!change) > varmax then change := varmax;  
+				trial.(i) <- !change
          else
             trial.(i) <- pop.(k).(i)
     done;
@@ -99,7 +101,7 @@ let one_step_evol_diff = fun pop fobj cr f ->
     pop;;
     
 
-let one_step_evol_diff_float = fun pop fobj cr f ->
+let one_step_evol_diff_float = fun varmax pop fobj cr f ->
     let nb_individu = Array.length pop in
     let taille_individu = Array.length pop.(0) in
     let chosen = Array.make 3 0 in
@@ -133,7 +135,9 @@ let one_step_evol_diff_float = fun pop fobj cr f ->
 	   let c = chosen.(2) in
       for i=0 to (taille_individu-1) do
 			if (Random.int 100)<cr then
-				trial.(i) <- pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))
+				let change = ref (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))) in
+				if abs(!change) > varmax then change := varmax;  
+				trial.(i) <- !change
          else
             trial.(i) <- pop.(k).(i)
     done;
@@ -232,7 +236,7 @@ let occurence_optim = fun nb_test nb_gen taille_pop taille_individu fobj ->
 	done;
 	occ;;
 
-let occ = occurence_optim 20 1000 10 5 close_zero_float;;
+(*let occ = occurence_optim 20 1000 10 5 close_zero_float;;*)
 (*		[|(66, 0.6, 1.1900320215263738e-047); (77, 0.6, 8.2427788905984683e-047);
     (63, 0.6, 6.6006649311369449e-046); (68, 0.6, 1.0051197117003727e-045);
     (68, 0.6, 6.0786206306978488e-048); (64, 0.6, 2.4581558653121063e-045);
