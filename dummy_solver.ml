@@ -80,19 +80,26 @@ let deep_copy_pop = fun pop ->
 	done;
 	copy
 
-let one_step_evol_diff_float = fun pop fobj cr f ->
-	let nb_individu = Array.length pop in
-  let taille_individu = Array.length pop.(0) in
-  let chosen = Array.make 3 0 in
- 	for k=0 to (nb_individu-1) do
-	let trial = Array.make taille_individu 0.0 in
+open Random;;
+
+Random.self_init;;
+
+let signe = fun x -> if x < 0. then - 1. else 1.;;
+    
+
+let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj ->
+    let nb_individu = Array.length pop in
+    let taille_individu = Array.length pop.(0) in
+    let chosen = Array.make 3 0 in
+    for k=0 to (nb_individu-1) do
+		let trial = Array.make taille_individu 0.0 in
 		chosen.(0)<-Random.int (nb_individu-1);
       chosen.(1)<-Random.int (nb_individu-1);
       chosen.(2)<-Random.int (nb_individu-1);
       
-	while chosen.(0)=k do 
+		while chosen.(0)=k do 
 			chosen.(0)<- Random.int (nb_individu-1);	
-	done;
+	   done;
 	   
 	   (*Printf.printf "\n \n k = %d \n" k;
 	   Printf.printf "C0 = %d \n" (chosen.(0));*)
@@ -114,31 +121,34 @@ let one_step_evol_diff_float = fun pop fobj cr f ->
 	   let c = chosen.(2) in
       for i=0 to (taille_individu-1) do
 			if (Random.int 100)<cr then
-				trial.(i) <- pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))
+				let change = (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i)) -. pop.(k).(i)) in
+				if abs_float(change) > varmax 
+					then 
+						trial.(i) <- pop.(k).(i) +. varmax*.signe(change)
+					else  
+						trial.(i) <- pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))
          else
             trial.(i) <- pop.(k).(i)
     done;
-    if (fobj trial)<(fobj pop.(k)) then pop.(k) <- trial
+    if (fobj trial dirobj)<(fobj pop.(k) dirobj) then pop.(k) <- trial
     done;
-    pop
-
-let evol_diff_float = fun pop gen_max fobj cr f ->
+    pop;;
+    
+let evol_diff_float = fun varmax pop gen_max fobj cr f dirobj ->
     let aux_pop = ref (deep_copy_pop pop) in
     for k=0 to gen_max do
-        aux_pop := one_step_evol_diff_float (!aux_pop) fobj cr f;
+        aux_pop := one_step_evol_diff_float varmax (!aux_pop) fobj cr f dirobj;
     done;
-    !aux_pop
+    !aux_pop;;
     
-let fmin_global = fun tab ->
-	let m = ref 0. in
-	for i = 0 to Array.length tab-1 do 
-		m:= !m +. tab.(i)
-	done;
-	!m 	
+let fobj trial dirobj = 
+	let n = Array.length dirobj in 
+	let ecart = ref 0. in 
+	for i=0 to (n-1) do 
+		ecart := !ecart +. (abs_float (trial.(i) -. dirobj.(i)))**2.
+	done; 
+	!ecart
 	
-
-
-
 let gather_dir= fun flying ->
 	let n = List.length flying in 
 	
@@ -170,22 +180,64 @@ let gather_norm= fun flying ->
 			 aux tl (i+1) in 
 	aux flying 0
 	
-
+let gather_dirobj= fun flying plns ->
+	let n = List.length flying in 
+	let dirobj_vect = Array.make n 0. in
+	let rec aux flying i= 
+		match flying with
+		|[]-> dirobj_vect
+		|f::tl-> let pln= P.find (F.id f) plns in
+         let v_to_dest= to_destination pln f in dirobj_vect.(i)<-(Geo.V2D.direction v_to_dest);
+			 aux tl (i+1) in 
+	aux flying 0
 	
+let make_pop_test_float = fun taille_pop taille_individu ->
+	let pop = Array.make_matrix taille_pop taille_individu 0.0 in
+	for k=0 to taille_pop-1 do
+		for i=0 to taille_individu-1 do
+			let aux = Random.float 6.28 in 
+			pop.(k).(i) <- aux;
+		done;
+	done;
+	pop;;
+
+
 let compute_velocities_2 max_turn_angle plns flying =
+  let n = List.length flying in 
+  let n_pop = 20 in
+  let n_gen = 500 in
+  let cr = 66 in 
+  let f = 0.6 in  
 	let dir_vect = gather_dir flying in 
 	let norm_vect = gather_norm flying in 
-  let rec loop l acc i  =
+	let dirobj_vect = gather_dirobj flying plns in 
+	if n>0 then 
+		let pop = make_pop_test_float n_pop n in 
+  	let new_v = evol_diff_float max_turn_angle pop n_gen fobj cr f dirobj_vect in 
+  	let rec loop l acc i  =
   	match l with 
   	| [] -> acc
   	| f:: tl -> 
-  		try 
+  		try
+  			let new_dir = new_v.(0).(i) in 
+  			let new_norm = norm_vect.(i) in 
+  			let new_acc= Util.IntMap.add (F.id f) (new_dir, new_norm) acc in
+  			loop tl new_acc (i+1)
+  		with Not_found -> failwith "compute_velocities" in
+		loop flying Util.IntMap.empty 0
+	else 
+		let rec loop l acc i  =
+  	match l with 
+  	| [] -> acc
+  	| f:: tl -> 
+  		try
   			let new_dir = dir_vect.(i) in 
   			let new_norm = norm_vect.(i) in 
   			let new_acc= Util.IntMap.add (F.id f) (new_dir, new_norm) acc in
   			loop tl new_acc (i+1)
   		with Not_found -> failwith "compute_velocities" in
-			loop flying Util.IntMap.empty 0
+		loop flying Util.IntMap.empty 0
+			
 		
 		
 		
