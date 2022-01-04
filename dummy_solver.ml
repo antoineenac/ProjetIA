@@ -204,7 +204,7 @@ let make_pop_test_float = fun taille_pop taille_individu ->
 
 let compute_velocities_2 max_turn_angle plns flying =
   let n = List.length flying in 
-  let n_pop = 20 in
+  let n_pop = 30 in
   let n_gen = 500 in
   let cr = 66 in 
   let f = 0.6 in  
@@ -226,18 +226,7 @@ let compute_velocities_2 max_turn_angle plns flying =
   		with Not_found -> failwith "compute_velocities" in
 		loop flying Util.IntMap.empty 0
 	else 
-		let rec loop l acc i  =
-  	match l with 
-  	| [] -> acc
-  	| f:: tl -> 
-  		try
-  			let new_dir = dir_vect.(i) in 
-  			let new_norm = norm_vect.(i) in 
-  			let new_acc= Util.IntMap.add (F.id f) (new_dir, new_norm) acc in
-  			loop tl new_acc (i+1)
-  		with Not_found -> failwith "compute_velocities" in
-		loop flying Util.IntMap.empty 0
-			
+		Util.IntMap.empty
 		
 		
 		
