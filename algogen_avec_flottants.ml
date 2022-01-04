@@ -99,6 +99,7 @@ let one_step_evol_diff = fun varmax pop fobj cr f ->
     if (fobj trial)<(fobj pop.(k)) then pop.(k) <- trial
     done;
     pop;;
+let signe = fun x -> if x < 0. then - 1. else 1.;;
     
 
 let one_step_evol_diff_float = fun varmax pop fobj cr f ->
@@ -135,9 +136,12 @@ let one_step_evol_diff_float = fun varmax pop fobj cr f ->
 	   let c = chosen.(2) in
       for i=0 to (taille_individu-1) do
 			if (Random.int 100)<cr then
-				let change = ref (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))) in
-				if abs(!change) > varmax then change := varmax;  
-				trial.(i) <- !change
+				let change = (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i)) -. pop.(k).(i)) in
+				if abs_float(change) > varmax 
+					then 
+						trial.(i) <- pop.(k).(i) +. varmax*.signe(change)
+					else  
+						trial.(i) <- pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))
          else
             trial.(i) <- pop.(k).(i)
     done;
@@ -152,10 +156,10 @@ let evol_diff = fun pop gen_max fobj cr f ->
     done;
     !aux_pop;;
     
-let evol_diff_float = fun pop gen_max fobj cr f ->
+let evol_diff_float = fun varmax pop gen_max fobj cr f ->
     let aux_pop = ref (deep_copy_pop pop) in
     for k=0 to gen_max do
-        aux_pop := one_step_evol_diff_float (!aux_pop) fobj cr f;
+        aux_pop := one_step_evol_diff_float varmax (!aux_pop) fobj cr f;
     done;
     !aux_pop;;
 
@@ -183,9 +187,11 @@ let pop_test = make_pop_test 10 10;;
 
 let test = evol_diff pop_test 1000 close_zero 5 2;;
 
+let varmax = 1000.;;
+
 let pop_test_float = make_pop_test_float 10 10;;
 
-let test = evol_diff_float pop_test_float 1000 close_zero_float 53 0.6;;
+let test = evol_diff_float varmax pop_test_float 1000 close_zero_float 53 0.6;;
 
 
 
