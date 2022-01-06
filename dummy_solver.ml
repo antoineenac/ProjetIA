@@ -87,7 +87,7 @@ Random.self_init;;
 let signe = fun x -> if x < 0. then - 1. else 1.;;
     
 
-let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj ->
+let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj f_array ->
     let nb_individu = Array.length pop in
     let taille_individu = Array.length pop.(0) in
     let chosen = Array.make 3 0 in
@@ -130,24 +130,17 @@ let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj ->
          else
             trial.(i) <- pop.(k).(i)
     done;
-    if (fobj trial dirobj)<(fobj pop.(k) dirobj) then pop.(k) <- trial
+    if (fobj trial dirobj f_array)<(fobj pop.(k) dirobj f_array) then pop.(k) <- trial
     done;
     pop;;
     
-let evol_diff_float = fun varmax pop gen_max fobj cr f dirobj ->
+let evol_diff_float = fun varmax pop gen_max fobj cr f dirobj f_array ->
     let aux_pop = ref (deep_copy_pop pop) in
     for k=0 to gen_max do
-        aux_pop := one_step_evol_diff_float varmax (!aux_pop) fobj cr f dirobj;
+        aux_pop := one_step_evol_diff_float varmax (!aux_pop) fobj cr f dirobj f_array;
     done;
     !aux_pop;;
     
-let fobj trial dirobj = 
-	let n = Array.length dirobj in 
-	let ecart = ref 0. in 
-	for i=0 to (n-1) do 
-		ecart := !ecart +. (abs_float (trial.(i) -. dirobj.(i)))**2.
-	done; 
-	!ecart
 	
 let gather_dir= fun flying ->
 	let n = List.length flying in 
@@ -200,20 +193,73 @@ let make_pop_test_float = fun taille_pop taille_individu ->
 		done;
 	done;
 	pop;;
+	
+(* on fait appel à conflit pour chaque individu de la génération considérée, renvoie le nombre de conflits futurs en conservant les trajectoire données *)			
+let conflicts flights_array dmin nb_iter = (* flights_array est un tableau contenant les vols;   nb_iter est le nombre de pas de temps  *)
+	let nb_conflicts = ref 0 and flights_number = Array.length flights_array in (* flights_number = nombre de vols dans la simulation lors de l'appel à conflicts *)
+	if flights_number < 2 then 0
+	else ( 
+		for i=0 to (flights_number-2) do
+			let vect_nul =  {Geo.P2D.x=0.;y=0.} in (* creation du vecteur nul de P2D pour la fonction make *)
+			for j=(i+1) to (flights_number-1) do
+				let flight_i = flights_array.(i) and flight_j = flights_array.(j) in
+				let pos_i = ref (Geo.V2D.make vect_nul (F.position flight_i)) and pos_j = ref (Geo.V2D.make vect_nul (F.position flight_j)) in (* conversion de la position en vecteur V2D *)
+				let velocity_i = F.velocity flight_i and velocity_j = F.velocity flight_j in  (* ligne précédente pour compatibilité avec le vecteur vitesse *)
+				let t=ref 1 and no_conflict = ref true in
+				while !t<=nb_iter && !no_conflict do 
+					let dx = !pos_i.x -. !pos_j.x and dy = !pos_i.y -. !pos_j.y in
+					let dist = sqrt (dx*.dx  +. dy*.dy) in  (* calcul de la distance séparant les avions à un temps donné *)
+					if dist <= dmin then (                  (* en cas de conflit, on interrompt la recherche et on passe au(x) vol(s) suivant(s) *)
+						nb_conflicts := !nb_conflicts + 1; 
+						no_conflict := false;
+					)
+					else ( 
+						t:=!t+1;
+						pos_i := Geo.V2D.(+) !pos_i velocity_i;  (* déplacement de la position *)
+						pos_j := Geo.V2D.(+) !pos_j velocity_j;
+					)
+				done;
+			done;
+		done;
+		!nb_conflicts
+	)
 
 
-let compute_velocities_2 max_turn_angle plns flying =
+let to_array liste =
+	let n = List.length liste in  
+	let out = Array.make n (List.hd liste) in 
+	let rec aux i l  =  
+		match l with 
+		|[] -> out
+		|hd::tl -> out.(i)<- hd; aux (i+1) tl in 
+	aux 0 liste
+
+let fobj trial dirobj f_array= 
+	let n = Array.length dirobj in 
+	let dmin= 20. *. Util.nm2meter in
+	let ecart = ref 0. in 
+	for i=0 to (n-1) do 
+		ecart := !ecart +. (abs_float (trial.(i) -. dirobj.(i)))**2.
+	done; 
+	let n_conflits = (conflicts f_array dmin 3) in 
+	ecart := !ecart +. (float_of_int n_conflits) *. 2000.;
+	!ecart
+	
+let compute_velocities_2 max_turn_angle dmin plns flying =
   let n = List.length flying in 
-  let n_pop = 30 in
-  let n_gen = 500 in
-  let cr = 66 in 
+  let n_pop = 100 in
+  let n_gen = 20 in
+  let cr = 40 in 
   let f = 0.6 in  
 	let dir_vect = gather_dir flying in 
 	let norm_vect = gather_norm flying in 
 	let dirobj_vect = gather_dirobj flying plns in 
-	if n>0 then 
+	
+	if n>0 then
+		let f_array = to_array flying in 
+		Printf.printf "Nombre de conflits : %d \n" (conflicts f_array dmin 10); 
 		let pop = make_pop_test_float n_pop n in 
-  	let new_v = evol_diff_float max_turn_angle pop n_gen fobj cr f dirobj_vect in 
+  	let new_v = evol_diff_float max_turn_angle pop n_gen fobj cr f dirobj_vect f_array in 
   	let rec loop l acc i  =
   	match l with 
   	| [] -> acc
@@ -229,4 +275,5 @@ let compute_velocities_2 max_turn_angle plns flying =
 		Util.IntMap.empty
 		
 		
-		
+
+  
