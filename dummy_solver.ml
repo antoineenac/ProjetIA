@@ -87,7 +87,7 @@ Random.self_init;;
 let signe = fun x -> if x < 0. then - 1. else 1.;;
     
 
-let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj f_array ->
+let one_step_evol_diff_float = fun varmax dirvect pop fobj cr f dirobj f_array ->
     let nb_individu = Array.length pop in
     let taille_individu = Array.length pop.(0) in
     let chosen = Array.make 3 0 in
@@ -121,10 +121,10 @@ let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj f_array ->
 	   let c = chosen.(2) in
       for i=0 to (taille_individu-1) do
 			if (Random.int 100)<cr then
-				let change = (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i)) -. pop.(k).(i)) in
+				let change = (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i)) -. dirvect.(i)) in
 				if abs_float(change) > varmax 
 					then 
-						trial.(i) <- pop.(k).(i) +. varmax*.signe(change)
+						trial.(i) <- dirvect.(i) +. varmax*.signe(change)
 					else  
 						trial.(i) <- pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))
          else
@@ -134,10 +134,10 @@ let one_step_evol_diff_float = fun varmax pop fobj cr f dirobj f_array ->
     done;
     pop;;
     
-let evol_diff_float = fun varmax pop gen_max fobj cr f dirobj f_array ->
+let evol_diff_float = fun varmax dirvect pop gen_max fobj cr f dirobj f_array ->
     let aux_pop = ref (deep_copy_pop pop) in
     for k=0 to gen_max do
-        aux_pop := one_step_evol_diff_float varmax (!aux_pop) fobj cr f dirobj f_array;
+        aux_pop := one_step_evol_diff_float varmax dirvect (!aux_pop) fobj cr f dirobj f_array;
     done;
     !aux_pop;;
     
@@ -241,39 +241,126 @@ let fobj trial dirobj f_array=
 	for i=0 to (n-1) do 
 		ecart := !ecart +. (abs_float (trial.(i) -. dirobj.(i)))**2.
 	done; 
-	let n_conflits = (conflicts f_array dmin 3) in 
-	ecart := !ecart +. (float_of_int n_conflits) *. 2000.;
-	!ecart
+	let n_conflits = (conflicts f_array dmin 2) in 
+	if n_conflits >0 then 
+		max_float
+	else 
+		!ecart
+
+
+let fl_in_z1 f = 
+	let pos = F.position f in 
+	(pos.x>300. && pos.y>300.)
 	
+let fl_in_z2 f = 
+	let pos = F.position f in 
+	(pos.x<=300. && pos.y<=300.)
+	
+let fl_in_z3 f = 
+	let pos = F.position f in 
+	(pos.x>300. && pos.y<=300.)
+	
+let fl_in_z4 f = 
+	let pos = F.position f in 
+	(pos.x<=300. && pos.y>300.)
+	
+(*let concat t1 t2 = 
+	let n1 = Array.length t1 in 
+	let n2 = Array.length t2 in 
+	let tout = Array.make (n1+n2) 0. in 
+	for i=0 to (n1-1) do 
+		tout.(i) <- t1.(i)
+	done;
+	for j=0 to (n2-1) do 
+		tout.(n1+j)<- t2.(j)
+	done;
+	tout*)
+	 
+let best_individu = fun pop fobj dirobj_vect f_array->
+	let nb_individu = Array.length pop in 
+	let min = ref (fobj pop.(0) dirobj_vect f_array) in
+	let indice_min = ref 0 in 
+	for k=1 to nb_individu-1 do 
+		let aux = (fobj pop.(k) dirobj_vect f_array) in
+		if aux <(!min) then begin min := aux; indice_min := k end
+	done;
+	!indice_min;;
+
 let compute_velocities_2 max_turn_angle dmin plns flying =
   let n = List.length flying in 
-  let n_pop = 100 in
-  let n_gen = 20 in
+  let n_pop = 10 in
+  let n_gen = 200 in
   let cr = 40 in 
   let f = 0.6 in  
-	let dir_vect = gather_dir flying in 
+	(*let dir_vect = gather_dir flying in *)
 	let norm_vect = gather_norm flying in 
-	let dirobj_vect = gather_dirobj flying plns in 
+	(*let dirobj_vect = gather_dirobj flying plns in *) 
 	
 	if n>0 then
-		let f_array = to_array flying in 
-		Printf.printf "Nombre de conflits : %d \n" (conflicts f_array dmin 10); 
+  	let split_zones flying = 
+  		let rec aux z1 z2 z3 z4 fl=
+  		match fl with
+			|[]-> z1,z2,z3,z4
+			|f::tl-> if fl_in_z1 f then aux (f::z1) z2 z3 z4 tl 
+							else 
+								if fl_in_z2 f then aux z1 (f::z2) z3 z4 tl
+								else 
+									if fl_in_z3 f then aux z1 z2 (f::z3) z4 tl 
+									else 
+										aux z1 z2 z3 (f::z4) tl
+								
+			in aux [] [] [] [] flying
+			in
+		
+		
+		let z1,z2,z3,z4 = split_zones flying in
+		let n1 = List.length z1 in
+		let n2 = List.length z2 in 
+		let n3 = List.length z3 in
+		let n4 = List.length z4 in
+		
+		let compute z n= 
+			if n>0 then 
+				let dirobj_vect = gather_dirobj z plns in
+				let dir_vect = gather_dir z in
+				let f_array = to_array z in
+				let pop = make_pop_test_float n_pop n in
+				let out = evol_diff_float max_turn_angle dir_vect pop n_gen fobj cr f dirobj_vect f_array in 
+				let best = best_individu out fobj dirobj_vect f_array in 
+				out,best;
+				
+			else [||],0  in 
+			
+	(*partie 1*)
+		let new_v1,best1 = compute z1 n1 in
+	(*partie 2*)
+		let new_v2,best2 = compute z2 n2 in
+		let new_v3,best3 = compute z3 n3 in
+		let new_v4,best4 = compute z4 n4 in
+		 
+		
+		(*let f_array = to_array flying in 
 		let pop = make_pop_test_float n_pop n in 
-  	let new_v = evol_diff_float max_turn_angle pop n_gen fobj cr f dirobj_vect f_array in 
-  	let rec loop l acc i  =
+  	let new_v = evol_diff_float max_turn_angle pop n_gen fobj cr f dirobj_vect f_array in *)
+  	let rec loop l acc i res best  =
   	match l with 
   	| [] -> acc
   	| f:: tl -> 
-  		try
-  			let new_dir = new_v.(0).(i) in 
+  		try 
+  			let new_dir = res.(best).(i) in 
   			let new_norm = norm_vect.(i) in 
   			let new_acc= Util.IntMap.add (F.id f) (new_dir, new_norm) acc in
-  			loop tl new_acc (i+1)
+  			loop tl new_acc (i+1) res best
   		with Not_found -> failwith "compute_velocities" in
-		loop flying Util.IntMap.empty 0
+  	let acc1 = loop z1 Util.IntMap.empty 0 new_v1 best1 in
+		let acc2 = loop z2 acc1 0 new_v2 best2 in
+		let acc3 = loop z3 acc2 0 new_v3 best3 in
+		loop z4 acc3 0 new_v4 best4;
+		
 	else 
 		Util.IntMap.empty
 		
 		
 
   
+
