@@ -54,8 +54,7 @@ let solve uparam param state flying =
   Printf.printf "\n";flush stdout;
   let max_turn_angle= param.Sim.timestep*.uparam.max_turning_rate in
   let velocities=
-    (*Dummy_solver.compute_velocities max_turn_angle dmin state.plns lf *)
-    Dummy_solver.compute_velocities_2 max_turn_angle dmin state.plns lf 
+    Dummy_solver.compute_velocities max_turn_angle dmin state.plns lf 
     in
   velocities, ()
 
