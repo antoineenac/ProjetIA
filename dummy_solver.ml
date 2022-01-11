@@ -2,7 +2,14 @@
 
 open Modules ;;  
 open Random  ;;  
-Random.self_init ;;            
+Random.self_init ;;         
+
+let n_pop = 10 and  (* nombre d'individus par génération *)
+n_gen = 200 and	(* nombre de générations calculées par l'évolution différentielle *)
+cr = 40 and 
+f = 0.6 and
+dmin = 20. *. Util.nm2meter and  (* distance de séparation horizontale minimale *)
+nb_iter = 5;;  (* nombre d'itérations temporelles effectuées par la fonction de recherche de conflits *)
 
 (*---------- fonctions auxiliaires ----------*)
  
@@ -159,8 +166,8 @@ let gather_dirobj= fun flying plns ->
 (* on fait appel à conflit pour chaque individu de la génération considérée, renvoie le nombre de conflits futurs en conservant les trajectoire données *)
 			
 let conflicts = fun flights_array dmin nb_iter -> 				(* flights_array est un tableau contenant les vols;   nb_iter est le nombre de pas de temps  *)
-	let nb_conflicts = ref 0 and flights_number = Array.length flights_array in 				(* flights_number = nombre de vols dans la simulation lors de l'appel à conflicts *)
-	if flights_number < 2 then 0
+	let nb_conflicts = ref 0. and flights_number = Array.length flights_array in 				(* flights_number = nombre de vols dans la simulation lors de l'appel à conflicts *)
+	if flights_number < 2 then 0.
 	else ( 
 		for i=0 to (flights_number-2) do
 			let vect_nul =  {Geo.P2D.x=0.;y=0.} in 				(* creation du vecteur nul de P2D pour la fonction make *)
@@ -173,7 +180,7 @@ let conflicts = fun flights_array dmin nb_iter -> 				(* flights_array est un ta
 					let dx = !pos_i.x -. !pos_j.x and dy = !pos_i.y -. !pos_j.y in
 					let dist = sqrt (dx*.dx  +. dy*.dy) in  (* calcul de la distance séparant les avions à un temps donné *)
 					if dist <= dmin then (                  (* en cas de conflit, on interrompt la recherche et on passe au(x) vol(s) suivant(s) *)
-						nb_conflicts := !nb_conflicts + 1; 
+						nb_conflicts := !nb_conflicts +. (1. /. float_of_int(!t)); 
 						no_conflict := false;
 					)
 					else ( 
@@ -191,18 +198,13 @@ let conflicts = fun flights_array dmin nb_iter -> 				(* flights_array est un ta
 
 let fobj = fun trial dirobj f_array ->
 	(*fonction de test pour la detection de conflit, vaut max_float dès qu'il y a un conflit*) 
-	let n = Array.length dirobj in 
-	let dmin= 20. *. Util.nm2meter in
+	let n = Array.length dirobj in
 	let ecart = ref 0. in 
 	for i=0 to (n-1) do 
 		ecart := !ecart +. (abs_float (trial.(i) -. dirobj.(i)))**2.
 	done; 
-	let n_conflits = (conflicts f_array dmin 2) in 
-	if n_conflits >0 then 
-		max_float
-	else 
-		!ecart
-
+	let n_conflits = (conflicts f_array dmin nb_iter) in 
+	(n_conflits,!ecart)
 (*---------- découpage en 4 zones ----------*)
 
 let fl_in_z1 f = 
@@ -226,10 +228,6 @@ let fl_in_z4 f =
 let compute_velocities = fun max_turn_angle dmin plns flying ->
   
   let n = List.length flying in 
-  let n_pop = 10 in
-  let n_gen = 200 in
-  let cr = 40 in 
-  let f = 0.6 in  
 	let norm_vect = gather_norm flying in  
 	
 	if n>0 then
@@ -259,7 +257,7 @@ let compute_velocities = fun max_turn_angle dmin plns flying ->
 			if n>0 then 
 				let dirobj_vect = gather_dirobj z plns in (* directions objectif mises à jour des avions *)
 				let dir_vect = gather_dir z in (* directions actuelles *)
-				let f_array = to_array z in (* tableau des vols *)
+				let f_array = to_array z in (* tableau des vols *) 
 				let pop = make_pop n_pop n in (* population aléatoire *)
 				let out = evol_diff max_turn_angle dir_vect pop n_gen fobj cr f dirobj_vect f_array in 
 				let best = best_individu out fobj dirobj_vect f_array in 
