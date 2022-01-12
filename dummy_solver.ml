@@ -4,12 +4,12 @@ open Modules ;;
 open Random  ;;  
 Random.self_init ;;         
 
-let n_pop = 10 and  (* nombre d'individus par génération *)
-n_gen = 200 and	(* nombre de générations calculées par l'évolution différentielle *)
-cr = 40 and 
+let n_pop = 15 and  (* nombre d'individus par génération *)
+n_gen = 50 and	(* nombre de générations calculées par l'évolution différentielle *)
+cr = 60 and 
 f = 0.6 and
 dmin = 20. *. Util.nm2meter and  (* distance de séparation horizontale minimale *)
-nb_iter = 5;;  (* nombre d'itérations temporelles effectuées par la fonction de recherche de conflits *)
+nb_iter = 45;;  (* nombre d'itérations temporelles effectuées par la fonction de recherche de conflits *)
 
 (*---------- fonctions auxiliaires ----------*)
  
@@ -51,7 +51,7 @@ let to_array liste =
 
 (*---------- évolution différentielle ----------*)
     
-let one_step_evol_diff = fun varmax dirvect pop fobj cr f dirobj f_array ->
+let one_step_evol_diff = fun varmax pop fobj cr f dir_vect dirobj_vect f_array ->
 	(* fait une génération d'évolution différentielle *)
 	let nb_individu = Array.length pop in
   let taille_individu = Array.length pop.(0) in
@@ -79,40 +79,40 @@ let one_step_evol_diff = fun varmax dirvect pop fobj cr f dirobj f_array ->
 	  let c = chosen.(2) in
     for i=0 to (taille_individu-1) do
 			if (Random.int 100)<cr then
-				let change = (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i)) -. dirvect.(i)) in
+				let change = (pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i)) -. dir_vect.(i)) in
 				if abs_float(change) > varmax 
 					then 
-						trial.(i) <- dirvect.(i) +. varmax*.signe(change)
+						trial.(i) <- dir_vect.(i) +. varmax*.signe(change)
 					else  
 						trial.(i) <- pop.(a).(i) +. f*.(pop.(b).(i)-.pop.(c).(i))
          	else
             trial.(i) <- pop.(k).(i)
     done;
     
-    if (fobj trial dirobj f_array)<(fobj pop.(k) dirobj f_array) then pop.(k) <- trial
+    if (fobj trial dir_vect dirobj_vect f_array)<(fobj pop.(k) dir_vect dirobj_vect f_array) then pop.(k) <- trial
     
     done;
 	pop
     
-let evol_diff = fun varmax dirvect pop gen_max fobj cr f dirobj f_array ->
+let evol_diff = fun varmax pop gen_max fobj cr f dir_vect dirobj_vect f_array ->
 	(* lance l'évolution différentielle sur gen_max générations *)
   let aux_pop = ref (deep_copy_pop pop) in
   for k=0 to gen_max do
-		aux_pop := one_step_evol_diff varmax dirvect (!aux_pop) fobj cr f dirobj f_array;
+		aux_pop := one_step_evol_diff varmax (!aux_pop) fobj cr f dir_vect dirobj_vect f_array;
   done;
   !aux_pop
     
-let best_individu = fun pop fobj dirobj_vect f_array->
+let best_individu = fun pop fobj dir_vect dirobj_vect f_array->
 	(* renvoie l'indice du meilleur individu de la population *)
 	let nb_individu = Array.length pop in 
-	let min = ref (fobj pop.(0) dirobj_vect f_array) in
+	let min = ref (fobj pop.(0) dir_vect dirobj_vect f_array) in
 	let indice_min = ref 0 in 
 	for k=1 to nb_individu-1 do 
-		let aux = (fobj pop.(k) dirobj_vect f_array) in
+		let aux = (fobj pop.(k) dir_vect dirobj_vect f_array) in
 		if aux <(!min) then 
 			begin min := aux; indice_min := k end
 	done;
-	!indice_min
+	!indice_min,!min
     
 (*---------- récupération information de vol ----------*)
 	
@@ -165,22 +165,23 @@ let gather_dirobj= fun flying plns ->
 	
 (* on fait appel à conflit pour chaque individu de la génération considérée, renvoie le nombre de conflits futurs en conservant les trajectoire données *)
 			
-let conflicts = fun flights_array dmin nb_iter -> 				(* flights_array est un tableau contenant les vols;   nb_iter est le nombre de pas de temps  *)
-	let nb_conflicts = ref 0. and flights_number = Array.length flights_array in 				(* flights_number = nombre de vols dans la simulation lors de l'appel à conflicts *)
-	if flights_number < 2 then 0.
+let conflicts trial flights_array dmin nb_iter = (* flights_array est un tableau contenant les vols;   nb_iter est le nombre de pas de temps  *)
+	let nb_conflicts = ref 0 and flights_number = Array.length flights_array in (* flights_number = nombre de vols dans la simulation lors de l'appel à conflicts *)
+	if flights_number < 2 then 0
 	else ( 
 		for i=0 to (flights_number-2) do
-			let vect_nul =  {Geo.P2D.x=0.;y=0.} in 				(* creation du vecteur nul de P2D pour la fonction make *)
+			let vect_nul =  {Geo.P2D.x=0.;y=0.} in (* creation du vecteur nul de P2D pour la fonction make *)
 			for j=(i+1) to (flights_number-1) do
 				let flight_i = flights_array.(i) and flight_j = flights_array.(j) in
 				let pos_i = ref (Geo.V2D.make vect_nul (F.position flight_i)) and pos_j = ref (Geo.V2D.make vect_nul (F.position flight_j)) in (* conversion de la position en vecteur V2D *)
-				let velocity_i = F.velocity flight_i and velocity_j = F.velocity flight_j in  (* ligne précédente pour compatibilité avec le vecteur vitesse *)
+				let vi = F.vnorm flight_i and vj = F.vnorm flight_j in 
+				let velocity_i = {Geo.V2D.x=vi*.(cos (trial.(i)));y=vi*.(sin (trial.(i)))} and velocity_j = {Geo.V2D.x=vj*.(cos (trial.(j)));y=vj*.(sin trial.(j))} in  (* ligne précédente pour compatibilité avec le vecteur vitesse *)
 				let t=ref 1 and no_conflict = ref true in
 				while !t<=nb_iter && !no_conflict do 
 					let dx = !pos_i.x -. !pos_j.x and dy = !pos_i.y -. !pos_j.y in
 					let dist = sqrt (dx*.dx  +. dy*.dy) in  (* calcul de la distance séparant les avions à un temps donné *)
 					if dist <= dmin then (                  (* en cas de conflit, on interrompt la recherche et on passe au(x) vol(s) suivant(s) *)
-						nb_conflicts := !nb_conflicts +. (1. /. float_of_int(!t)); 
+						nb_conflicts := !nb_conflicts + 1; 
 						no_conflict := false;
 					)
 					else ( 
@@ -196,32 +197,47 @@ let conflicts = fun flights_array dmin nb_iter -> 				(* flights_array est un ta
 
 (*---------- fonctions objectif ----------*)
 
-let fobj = fun trial dirobj f_array ->
+ (*let fobj = fun trial dir_vect dirobj_vect f_array ->
 	(*fonction de test pour la detection de conflit, vaut max_float dès qu'il y a un conflit*) 
-	let n = Array.length dirobj in
+	let n = Array.length dirobj_vect in
 	let ecart = ref 0. in 
 	for i=0 to (n-1) do 
-		ecart := !ecart +. (abs_float (trial.(i) -. dirobj.(i)))**2.
+		ecart := !ecart +. (abs_float (trial.(i) -. dirobj_vect.(i)))**2.
 	done; 
-	let n_conflits = (conflicts f_array dmin nb_iter) in 
-	(n_conflits,!ecart)
+	let n_conflits = float_of_int (conflicts f_array dmin nb_iter) in 
+	ecart := !ecart +. n_conflits;
+	!ecart *)
+
+let fobj = fun trial dir_vect dirobj_vect f_array ->
+	(*fonction de test pour la detection de conflit, vaut max_float dès qu'il y a un conflit*) 
+	let n = Array.length dirobj_vect in
+	let ecart = ref 0. in 
+	let n_conflits = float_of_int (conflicts trial f_array dmin nb_iter) in 
+	(*if n_conflits =0. then *)
+		for i=0 to (n-1) do 
+			ecart := !ecart +. (abs_float (trial.(i) -. dirobj_vect.(i)))**2.
+		done;
+		ecart := !ecart +. 5.*.n_conflits;
+	(*else*)
+	!ecart
+
 (*---------- découpage en 4 zones ----------*)
 
 let fl_in_z1 f = 
 	let pos = F.position f in 
-	(pos.x>300. && pos.y>300.)
+	(pos.x>0. && pos.y>0.)
 	
 let fl_in_z2 f = 
 	let pos = F.position f in 
-	(pos.x<=300. && pos.y<=300.)
+	(pos.x<=0. && pos.y<=0.)
 	
 let fl_in_z3 f = 
 	let pos = F.position f in 
-	(pos.x>300. && pos.y<=300.)
+	(pos.x>0. && pos.y<=0.)
 	
 let fl_in_z4 f = 
 	let pos = F.position f in 
-	(pos.x<=300. && pos.y>300.)
+	(pos.x<=0. && pos.y>0.)
 	
 (*---------- calcul des nouveaux vecteurs ----------*)
 
@@ -259,16 +275,21 @@ let compute_velocities = fun max_turn_angle dmin plns flying ->
 				let dir_vect = gather_dir z in (* directions actuelles *)
 				let f_array = to_array z in (* tableau des vols *) 
 				let pop = make_pop n_pop n in (* population aléatoire *)
-				let out = evol_diff max_turn_angle dir_vect pop n_gen fobj cr f dirobj_vect f_array in 
-				let best = best_individu out fobj dirobj_vect f_array in 
-				out,best;
+				let out = evol_diff max_turn_angle pop n_gen fobj cr f dir_vect dirobj_vect f_array in 
+				let best,min = best_individu out fobj dir_vect dirobj_vect f_array in 
+				out,best,min;
 				
-			else [||],0  in 
+			else [||],0,-1. in 
 			
-		let new_v1,best1 = compute z1 n1 in
-		let new_v2,best2 = compute z2 n2 in
-		let new_v3,best3 = compute z3 n3 in
-		let new_v4,best4 = compute z4 n4 in
+		let new_v1,best1,min1 = compute z1 n1 in
+		Printf.printf "score 1 = %f\n" min1;
+		let new_v2,best2,min2 = compute z2 n2 in
+		Printf.printf "score  2 = %f\n " min2;
+		let new_v3,best3,min3 = compute z3 n3 in
+		Printf.printf "score  3 = %f\n" min3;
+		let new_v4,best4,min4 = compute z4 n4 in
+		Printf.printf "score  4 = %f\n" min4;
+		
 		 
   	let rec loop = fun l acc i res best ->
   	match l with 
@@ -287,7 +308,6 @@ let compute_velocities = fun max_turn_angle dmin plns flying ->
 		
 	else 
 		Util.IntMap.empty
-		
 		
 
   
